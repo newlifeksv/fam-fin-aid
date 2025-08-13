@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,25 +16,137 @@ import heroImage from "@/assets/hero-finance.jpg";
 import ExpenseForm from "@/components/ExpenseForm";
 import DebtManager from "@/components/DebtManager";
 import FinancialSummary from "@/components/FinancialSummary";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<"dashboard" | "expenses" | "debts" | "summary">("dashboard");
 
   // Mock data for demonstration
   const financialStats = {
-    totalIncome: 8450.00,
-    totalExpenses: 3280.50,
-    totalDebts: 1200.00,
-    pendingApprovals: 3
+    totalIncome: 8450.0,
+    totalExpenses: 3280.5,
+    totalDebts: 1200.0,
+    pendingApprovals: 3,
   };
 
   const recentTransactions = [
     { id: 1, description: "Grocery Shopping", amount: 85.43, type: "expense", status: "approved", date: "2024-01-10" },
-    { id: 2, description: "Salary", amount: 3200.00, type: "income", status: "approved", date: "2024-01-09" },
-    { id: 3, description: "Utility Bills", amount: 145.30, type: "expense", status: "pending", date: "2024-01-08" },
-    { id: 4, description: "Freelance Income", amount: 850.00, type: "income", status: "approved", date: "2024-01-07" }
+    { id: 2, description: "Salary", amount: 3200.0, type: "income", status: "approved", date: "2024-01-09" },
+    { id: 3, description: "Utility Bills", amount: 145.3, type: "expense", status: "pending", date: "2024-01-08" },
+    { id: 4, description: "Freelance Income", amount: 850.0, type: "income", status: "approved", date: "2024-01-07" },
   ];
 
+  // Auth + family data
+  const { toast } = useToast();
+  const [userName, setUserName] = useState<string>("");
+  const [familyId, setFamilyId] = useState<string | null>(null);
+  const [members, setMembers] = useState<Array<{ id: string; full_name: string | null; email: string | null }>>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Basic SEO
+    document.title = "Dashboard | Family Finance";
+    const desc = "Family finance dashboard with member invites and summaries.";
+    let meta = document.querySelector('meta[name="description"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'description');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', desc);
+    let canonical = document.querySelector('link[rel="canonical"]');
+    if (!canonical) {
+      canonical = document.createElement('link');
+      canonical.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonical);
+    }
+    canonical.setAttribute('href', window.location.href);
+  }, []);
+
+  const generateToken = () => {
+    const arr = new Uint8Array(16);
+    crypto.getRandomValues(arr);
+    return Array.from(arr)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  };
+
+  useEffect(() => {
+    const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', user.id)
+        .maybeSingle();
+      const display = profile?.full_name || user.email || 'Member';
+      setUserName(display || '');
+
+      const { data: fmList } = await supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', user.id);
+
+      let famId = fmList && fmList.length > 0 ? (fmList[0] as any).family_id as string : null;
+
+      if (!famId) {
+        const defaultName = `Family of ${display}`;
+        const { data: fam, error: famErr } = await supabase
+          .from('families')
+          .insert({ owner_id: user.id, name: defaultName })
+          .select('id')
+          .single();
+        if (!famErr && fam) {
+          famId = (fam as any).id as string;
+          await supabase.from('family_members').insert({ family_id: famId, user_id: user.id, role: 'owner' });
+        }
+      }
+
+      if (famId) {
+        setFamilyId(famId);
+        const { data: memberRows } = await supabase
+          .from('family_members')
+          .select('user_id')
+          .eq('family_id', famId);
+        const ids = (memberRows || []).map((r: any) => r.user_id);
+        if (ids.length > 0) {
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', ids);
+          setMembers(profiles || []);
+        } else {
+          setMembers([]);
+        }
+      }
+    };
+    load();
+  }, []);
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!familyId || !inviteEmail) return;
+    const token = generateToken();
+    const { data: userData } = await supabase.auth.getUser();
+    const inviterId = userData.user?.id;
+    const { error } = await supabase
+      .from('invites')
+      .insert({ family_id: familyId, email: inviteEmail, token, invited_by: inviterId });
+    if (error) {
+      toast({ title: 'Invite failed', description: error.message, variant: 'destructive' as any });
+      return;
+    }
+    const url = `${window.location.origin}/auth?invite=${token}`;
+    setInviteUrl(url);
+    toast({ title: 'Invite created', description: 'Share the link with the invited member.' });
+    setInviteEmail('');
+  };
   const renderDashboard = () => (
     <div className="space-y-8">
       {/* Hero Section */}
@@ -140,6 +252,46 @@ const Index = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Family & Invites */}
+      <Card className="financial-card">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Welcome, {userName || 'Member'}</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">Family members</h3>
+              <ul className="space-y-2">
+                {members.map((m) => (
+                  <li key={m.id} className="flex items-center justify-between rounded-md bg-accent/50 px-3 py-2">
+                    <span className="font-medium">{m.full_name || m.email}</span>
+                    <Badge variant="secondary">member</Badge>
+                  </li>
+                ))}
+                {members.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No members yet.</p>
+                )}
+              </ul>
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">Invite a member</h3>
+              <form onSubmit={handleInvite} className="flex gap-2">
+                <Label htmlFor="inviteEmail" className="sr-only">Email</Label>
+                <Input id="inviteEmail" type="email" placeholder="email@family.com" value={inviteEmail} onChange={(e)=>setInviteEmail(e.target.value)} required />
+                <Button type="submit">Invite</Button>
+              </form>
+              {inviteUrl && (
+                <p className="text-xs text-muted-foreground mt-2 break-all">
+                  Invite link: <a href={inviteUrl} className="text-primary underline">{inviteUrl}</a>
+                </p>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Transactions */}
       <Card className="financial-card">
