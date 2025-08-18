@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { Home } from "lucide-react";
 
 const Auth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -43,7 +44,7 @@ const Auth = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         // After login/signup, try to process invite if present
-        processInviteIfAny().then(() => navigate("/"));
+        processInviteIfAny().then(() => navigate("/dashboard"));
       }
     });
     return () => subscription.unsubscribe();
@@ -117,7 +118,19 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen grid place-items-center px-6 py-12">
+    <div className="min-h-screen grid place-items-center px-6 py-12 relative">
+      {/* Quick Access Toolbar */}
+      <div className="fixed top-4 right-4 z-50">
+        <div className="flex gap-2 bg-card/90 backdrop-blur-sm border rounded-lg p-2 shadow-lg">
+          <Button size="sm" variant="ghost" asChild>
+            <Link to="/">
+              <Home className="h-4 w-4 mr-1" />
+              Home
+            </Link>
+          </Button>
+        </div>
+      </div>
+
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">

@@ -10,8 +10,10 @@ import {
   CreditCard,
   PieChart,
   Users,
-  Receipt
+  Receipt,
+  Home
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import heroImage from "@/assets/hero-finance.jpg";
 import ExpenseForm from "@/components/ExpenseForm";
 import DebtManager from "@/components/DebtManager";
@@ -390,8 +392,30 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Quick Access Toolbar */}
+      <div className="fixed top-4 right-4 z-50">
+        <div className="flex gap-2 bg-card/90 backdrop-blur-sm border rounded-lg p-2 shadow-lg">
+          <Button size="sm" variant="ghost" asChild>
+            <Link to="/">
+              <Home className="h-4 w-4 mr-1" />
+              Home
+            </Link>
+          </Button>
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            onClick={async () => {
+              await supabase.auth.signOut();
+              // Auth state change will redirect automatically
+            }}
+          >
+            Logout
+          </Button>
+        </div>
+      </div>
+
       {/* Navigation */}
-      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
+      <nav className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-40">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
