@@ -147,9 +147,26 @@ const Index = () => {
     toast({ title: 'Invite created', description: 'Share the link with the invited member.' });
     setInviteEmail('');
   };
+  const financialQuotes = [
+    { quote: "A budget is telling your money where to go instead of wondering where it went.", author: "Dave Ramsey" },
+    { quote: "It's not how much money you make, but how much money you keep.", author: "Robert Kiyosaki" },
+    { quote: "The real measure of your wealth is how much you'd be worth if you lost all your money.", author: "Bernard Meltzer" },
+    { quote: "An investment in knowledge pays the best interest.", author: "Benjamin Franklin" },
+    { quote: "Financial peace isn't the acquisition of stuff. It's learning to live on less than you make.", author: "Dave Ramsey" }
+  ];
+
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentQuoteIndex((prev) => (prev + 1) % financialQuotes.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   const renderDashboard = () => (
     <div className="space-y-8">
-      {/* Hero Section */}
+      {/* Hero Section with Quote Slider */}
       <div className="relative overflow-hidden rounded-2xl hero-gradient p-8 text-white">
         <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-center">
           <div>
@@ -159,6 +176,15 @@ const Index = () => {
             <p className="text-xl opacity-90 mb-6">
               Track expenses, manage debts, and build financial transparency together.
             </p>
+            
+            {/* Financial Quote Slider */}
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 mb-6 min-h-[100px] flex items-center">
+              <div className="text-center animate-fade-in">
+                <p className="text-lg italic mb-2">"{financialQuotes[currentQuoteIndex].quote}"</p>
+                <p className="text-sm opacity-80">— {financialQuotes[currentQuoteIndex].author}</p>
+              </div>
+            </div>
+            
             <div className="flex gap-4">
               <Button 
                 variant="secondary" 
@@ -187,6 +213,19 @@ const Index = () => {
               className="rounded-xl shadow-[var(--shadow-large)] opacity-80"
             />
           </div>
+        </div>
+        
+        {/* Quote indicators */}
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
+          {financialQuotes.map((_, index) => (
+            <button
+              key={index}
+              onClick={() => setCurrentQuoteIndex(index)}
+              className={`w-2 h-2 rounded-full transition-all ${
+                index === currentQuoteIndex ? 'bg-white' : 'bg-white/40'
+              }`}
+            />
+          ))}
         </div>
       </div>
 

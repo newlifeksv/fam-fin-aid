@@ -13,6 +13,7 @@ const Auth = () => {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -84,7 +85,14 @@ const Auth = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (isSignUp) {
+      if (forgotPassword) {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth`,
+        });
+        if (error) throw error;
+        toast({ title: 'Password reset sent', description: 'Check your email for reset instructions.' });
+        setForgotPassword(false);
+      } else if (isSignUp) {
         const redirectUrl = `${window.location.origin}/auth`;
         const { error } = await supabase.auth.signUp({
           email,
@@ -113,12 +121,12 @@ const Auth = () => {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">
-            {isSignUp ? 'Create your account' : 'Sign in to Family Finance'}
+            {forgotPassword ? 'Reset your password' : isSignUp ? 'Create your account' : 'Sign in to Family Finance'}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+            {isSignUp && !forgotPassword && (
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full name</Label>
                 <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" required />
@@ -128,19 +136,39 @@ const Auth = () => {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
-            </div>
+            {!forgotPassword && (
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
+              </div>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Please wait…' : isSignUp ? 'Create account' : 'Sign in'}
+              {loading ? 'Please wait…' : forgotPassword ? 'Send reset email' : isSignUp ? 'Create account' : 'Sign in'}
             </Button>
           </form>
-          <div className="mt-4 text-sm text-center text-muted-foreground">
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button className="text-primary underline" onClick={() => setIsSignUp((v) => !v)}>
-              {isSignUp ? 'Sign in' : 'Create one'}
-            </button>
+          <div className="mt-4 space-y-2 text-sm text-center text-muted-foreground">
+            {!forgotPassword && (
+              <div>
+                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button className="text-primary underline" onClick={() => setIsSignUp((v) => !v)}>
+                  {isSignUp ? 'Sign in' : 'Create one'}
+                </button>
+              </div>
+            )}
+            {!isSignUp && !forgotPassword && (
+              <div>
+                <button className="text-primary underline" onClick={() => setForgotPassword(true)}>
+                  Forgot your password?
+                </button>
+              </div>
+            )}
+            {forgotPassword && (
+              <div>
+                <button className="text-primary underline" onClick={() => setForgotPassword(false)}>
+                  Back to sign in
+                </button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
