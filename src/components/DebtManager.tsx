@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,10 +6,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CreditCard, Plus, Check, X, AlertCircle } from "lucide-react";
+import { CreditCard, Plus, Check, X, AlertCircle, IndianRupee } from "lucide-react";
+import { supabase } from '@/integrations/supabase/client';
+import type { Session } from '@supabase/supabase-js';
+
+interface Debt {
+  id: string;
+  creditor: string;
+  amount: number;
+  purpose: string;
+  status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+}
 
 const DebtManager = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     creditor: "",
     amount: "",
@@ -17,38 +32,54 @@ const DebtManager = () => {
     notes: ""
   });
 
-  // Mock debt data
-  const debts = [
-    {
-      id: 1,
-      creditor: "Credit Card (Visa)",
-      amount: 2500.00,
-      purpose: "Home renovations",
-      status: "approved",
-      createdAt: "2024-01-15",
-      approvedBy: "Jane Doe"
-    },
-    {
-      id: 2,
-      creditor: "Student Loan",
-      amount: 15000.00,
-      purpose: "Education expenses",
-      status: "approved",
-      createdAt: "2024-01-10",
-      approvedBy: "John Doe"
-    },
-    {
-      id: 3,
-      creditor: "Personal Loan",
-      amount: 5000.00,
-      purpose: "Emergency medical expenses",
-      status: "pending",
-      createdAt: "2024-01-18",
-      approvedBy: null
-    }
-  ];
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        loadDebts();
+      }
+    });
 
-  const handleSubmit = (e: React.FormEvent) => {
+    const channel = supabase
+      .channel('debts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => {
+        loadDebts();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const loadDebts = async () => {
+    if (!session?.user) return;
+
+    try {
+      const { data: familyMembers } = await supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', session.user.id)
+        .limit(1);
+
+      if (!familyMembers?.length) return;
+
+      const { data, error } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('family_id', familyMembers[0].family_id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setDebts(data || []);
+    } catch (error) {
+      console.error('Error loading debts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.creditor || !formData.amount || !formData.purpose) {
@@ -56,22 +87,38 @@ const DebtManager = () => {
       return;
     }
 
-    toast.success("Debt submitted for approval!");
-    setFormData({
-      creditor: "",
-      amount: "",
-      purpose: "",
-      notes: ""
-    });
-    setShowForm(false);
-  };
+    if (!session?.user) return;
+    setIsSubmitting(true);
 
-  const handleApprove = (debtId: number) => {
-    toast.success("Debt approved successfully");
-  };
+    try {
+      const { data: familyMembers } = await supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', session.user.id)
+        .limit(1);
 
-  const handleReject = (debtId: number) => {
-    toast.success("Debt rejected and removed");
+      if (!familyMembers?.length) return;
+
+      const { error } = await supabase
+        .from('debts')
+        .insert({
+          user_id: session.user.id,
+          family_id: familyMembers[0].family_id,
+          creditor: formData.creditor,
+          amount: parseFloat(formData.amount),
+          purpose: formData.purpose,
+        });
+
+      if (error) throw error;
+
+      toast.success("Debt submitted for approval!");
+      setFormData({ creditor: "", amount: "", purpose: "", notes: "" });
+      setShowForm(false);
+    } catch (error) {
+      toast.error("Failed to submit debt request");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const totalApprovedDebt = debts
@@ -85,9 +132,7 @@ const DebtManager = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">Debt Management</h1>
-          <p className="text-muted-foreground">
-            Track and manage family debts with transparency
-          </p>
+          <p className="text-muted-foreground">Track and manage family debts</p>
         </div>
         <Button onClick={() => setShowForm(!showForm)}>
           <Plus className="h-4 w-4 mr-2" />
@@ -95,7 +140,6 @@ const DebtManager = () => {
         </Button>
       </div>
 
-      {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="financial-card">
           <CardHeader className="pb-3">
@@ -103,11 +147,8 @@ const DebtManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-debt">
-              ${totalApprovedDebt.toFixed(2)}
+              ₹{totalApprovedDebt.toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {debts.filter(d => d.status === "approved").length} approved debts
-            </p>
           </CardContent>
         </Card>
 
@@ -119,9 +160,6 @@ const DebtManager = () => {
             <div className="text-2xl font-bold text-primary">
               {pendingDebts.length}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Awaiting family approval
-            </p>
           </CardContent>
         </Card>
 
@@ -131,26 +169,19 @@ const DebtManager = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-foreground">
-              ${debts.filter(d => d.status === "approved").length > 0 
-                ? (totalApprovedDebt / debts.filter(d => d.status === "approved").length).toFixed(2)
-                : "0.00"
+              ₹{debts.filter(d => d.status === "approved").length > 0 
+                ? Math.round(totalApprovedDebt / debts.filter(d => d.status === "approved").length).toLocaleString()
+                : "0"
               }
             </div>
-            <p className="text-xs text-muted-foreground">
-              Per approved debt
-            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Add Debt Form */}
       {showForm && (
         <Card className="financial-card">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" />
-              Add New Debt
-            </CardTitle>
+            <CardTitle>Add New Debt</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -165,9 +196,8 @@ const DebtManager = () => {
                     required
                   />
                 </div>
-
                 <div className="space-y-2">
-                  <Label htmlFor="amount">Amount *</Label>
+                  <Label htmlFor="amount">Amount (₹) *</Label>
                   <Input
                     id="amount"
                     type="number"
@@ -179,7 +209,6 @@ const DebtManager = () => {
                   />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="purpose">Purpose *</Label>
                 <Input
@@ -190,27 +219,11 @@ const DebtManager = () => {
                   required
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Additional Notes</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Interest rate, payment terms, etc."
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  rows={3}
-                />
-              </div>
-
               <div className="flex gap-4">
-                <Button type="submit" className="flex-1">
-                  Submit for Approval
+                <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                  {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
                 </Button>
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setShowForm(false)}
-                >
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
                   Cancel
                 </Button>
               </div>
@@ -219,77 +232,43 @@ const DebtManager = () => {
         </Card>
       )}
 
-      {/* Debts List */}
       <Card className="financial-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            All Debts
-          </CardTitle>
+          <CardTitle>All Debts</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {debts.map((debt) => (
-              <div key={debt.id} className="p-4 rounded-lg border bg-card">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="font-semibold">{debt.creditor}</h3>
-                      <Badge variant={debt.status === "approved" ? "default" : "secondary"}>
-                        {debt.status}
-                      </Badge>
-                    </div>
-                    
-                    <p className="text-sm text-muted-foreground mb-1">
-                      {debt.purpose}
-                    </p>
-                    
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>Created: {debt.createdAt}</span>
-                      {debt.approvedBy && (
-                        <span>Approved by: {debt.approvedBy}</span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-debt mb-2">
-                      ${debt.amount.toFixed(2)}
-                    </div>
-                    
-                    {debt.status === "pending" && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="btn-income h-8 px-3"
-                          onClick={() => handleApprove(debt.id)}
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="btn-expense h-8 px-3"
-                          onClick={() => handleReject(debt.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
+          {loading ? (
+            <div className="text-center py-8">Loading debts...</div>
+          ) : debts.length > 0 ? (
+            <div className="space-y-4">
+              {debts.map((debt) => (
+                <div key={debt.id} className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold">{debt.creditor}</h3>
+                        <Badge variant={debt.status === "approved" ? "default" : "secondary"}>
+                          {debt.status}
+                        </Badge>
                       </div>
-                    )}
+                      <p className="text-sm text-muted-foreground mb-1">{debt.purpose}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Created: {new Date(debt.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xl font-bold text-debt mb-2">
+                        ₹{debt.amount.toLocaleString()}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {debts.length === 0 && (
+              ))}
+            </div>
+          ) : (
             <div className="text-center py-8">
               <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No debts recorded</h3>
-              <p className="text-muted-foreground">
-                Add your first debt to start tracking your family's financial obligations.
-              </p>
+              <p className="text-muted-foreground">No debts recorded yet.</p>
             </div>
           )}
         </CardContent>

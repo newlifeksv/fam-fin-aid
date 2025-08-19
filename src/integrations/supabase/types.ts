@@ -7,13 +7,106 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
   }
   public: {
     Tables: {
+      debts: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          creditor: string
+          family_id: string
+          id: string
+          purpose: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          creditor: string
+          family_id: string
+          id?: string
+          purpose: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          creditor?: string
+          family_id?: string
+          id?: string
+          purpose?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      expenses: {
+        Row: {
+          amount: number
+          approved_at: string | null
+          approved_by: string | null
+          category: string
+          created_at: string
+          description: string
+          family_id: string
+          id: string
+          notes: string | null
+          receipt_url: string | null
+          status: string
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          approved_at?: string | null
+          approved_by?: string | null
+          category: string
+          created_at?: string
+          description: string
+          family_id: string
+          id?: string
+          notes?: string | null
+          receipt_url?: string | null
+          status?: string
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          category?: string
+          created_at?: string
+          description?: string
+          family_id?: string
+          id?: string
+          notes?: string | null
+          receipt_url?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       families: {
         Row: {
           created_at: string
@@ -138,7 +231,7 @@ export type Database = {
     }
     Functions: {
       is_family_member: {
-        Args: { _user_id: string; _family_id: string }
+        Args: { _family_id: string; _user_id: string }
         Returns: boolean
       }
     }

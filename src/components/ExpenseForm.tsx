@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,9 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Receipt, Upload, DollarSign } from "lucide-react";
+import { Receipt, Upload, IndianRupee } from "lucide-react";
+import { supabase } from '@/integrations/supabase/client';
+import type { Session } from '@supabase/supabase-js';
 
 const ExpenseForm = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     description: "",
     amount: "",
@@ -16,10 +20,15 @@ const ExpenseForm = () => {
     category: "",
     notes: ""
   });
-
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.description || !formData.amount || !formData.type) {
@@ -27,16 +36,54 @@ const ExpenseForm = () => {
       return;
     }
 
-    // Mock submission
-    toast.success("Expense submitted for approval!");
-    setFormData({
-      description: "",
-      amount: "",
-      type: "",
-      category: "",
-      notes: ""
-    });
-    setReceiptFile(null);
+    if (!session?.user) {
+      toast.error("You must be logged in to add expenses");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const { data: familyMembers, error: familyError } = await supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', session.user.id)
+        .limit(1);
+
+      if (familyError || !familyMembers?.length) {
+        toast.error("You must be part of a family to add expenses");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('expenses')
+        .insert({
+          user_id: session.user.id,
+          family_id: familyMembers[0].family_id,
+          description: formData.description,
+          amount: parseFloat(formData.amount),
+          type: formData.type,
+          category: formData.category || 'other',
+          notes: formData.notes || null,
+        });
+
+      if (error) throw error;
+
+      toast.success("Expense submitted for approval!");
+      setFormData({
+        description: "",
+        amount: "",
+        type: "",
+        category: "",
+        notes: ""
+      });
+      setReceiptFile(null);
+    } catch (error) {
+      console.error('Error submitting expense:', error);
+      toast.error("Failed to submit expense. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,9 +125,9 @@ const ExpenseForm = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="amount">Amount *</Label>
+                <Label htmlFor="amount">Amount (₹) *</Label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <IndianRupee className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="amount"
                     type="number"
@@ -103,9 +150,8 @@ const ExpenseForm = () => {
                     <SelectValue placeholder="Select expense type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="expense">Regular Expense</SelectItem>
-                    <SelectItem value="contribution">Income/Contribution</SelectItem>
-                    <SelectItem value="debt-payment">Debt Payment</SelectItem>
+                    <SelectItem value="expense">Expense</SelectItem>
+                    <SelectItem value="income">Income</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -117,11 +163,12 @@ const ExpenseForm = () => {
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="groceries">Groceries</SelectItem>
-                    <SelectItem value="utilities">Utilities</SelectItem>
+                    <SelectItem value="food">Food</SelectItem>
                     <SelectItem value="transportation">Transportation</SelectItem>
+                    <SelectItem value="bills">Bills</SelectItem>
                     <SelectItem value="entertainment">Entertainment</SelectItem>
                     <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="education">Education</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
@@ -143,9 +190,6 @@ const ExpenseForm = () => {
                   <p className="text-sm text-muted-foreground">
                     {receiptFile ? receiptFile.name : "Click to upload receipt or drag and drop"}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    PNG, JPG, PDF up to 10MB
-                  </p>
                 </label>
               </div>
             </div>
@@ -154,7 +198,7 @@ const ExpenseForm = () => {
               <Label htmlFor="notes">Additional Notes</Label>
               <Textarea
                 id="notes"
-                placeholder="Any additional details or context..."
+                placeholder="Any additional details..."
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
@@ -162,8 +206,8 @@ const ExpenseForm = () => {
             </div>
 
             <div className="flex gap-4 pt-4">
-              <Button type="submit" className="flex-1">
-                Submit for Approval
+              <Button type="submit" className="flex-1" disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
               </Button>
               <Button 
                 type="button" 
@@ -180,17 +224,6 @@ const ExpenseForm = () => {
               </Button>
             </div>
           </form>
-        </CardContent>
-      </Card>
-
-      <Card className="financial-card bg-accent/20">
-        <CardContent className="pt-6">
-          <div className="text-center space-y-2">
-            <h3 className="font-semibold text-primary">Need Approval</h3>
-            <p className="text-sm text-muted-foreground">
-              All expenses require approval from another family member before being added to your financial records.
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
