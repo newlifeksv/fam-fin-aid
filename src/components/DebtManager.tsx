@@ -71,7 +71,7 @@ const DebtManager = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setDebts(data || []);
+      setDebts((data || []) as Debt[]);
     } catch (error) {
       console.error('Error loading debts:', error);
     } finally {
