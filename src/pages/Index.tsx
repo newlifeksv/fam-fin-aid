@@ -26,20 +26,6 @@ import { useToast } from "@/components/ui/use-toast";
 const Index = () => {
   const [activeTab, setActiveTab] = useState<"dashboard" | "expenses" | "debts" | "summary">("dashboard");
 
-  // Mock data for demonstration
-  const financialStats = {
-    totalIncome: 8450.0,
-    totalExpenses: 3280.5,
-    totalDebts: 1200.0,
-    pendingApprovals: 3,
-  };
-
-  const recentTransactions = [
-    { id: 1, description: "Grocery Shopping", amount: 85.43, type: "expense", status: "approved", date: "2024-01-10" },
-    { id: 2, description: "Salary", amount: 3200.0, type: "income", status: "approved", date: "2024-01-09" },
-    { id: 3, description: "Utility Bills", amount: 145.3, type: "expense", status: "pending", date: "2024-01-08" },
-    { id: 4, description: "Freelance Income", amount: 850.0, type: "income", status: "approved", date: "2024-01-07" },
-  ];
 
   // Auth + family data
   const { toast } = useToast();
@@ -231,68 +217,27 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Financial Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="financial-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Income</CardTitle>
-            <TrendingUp className="h-4 w-4 text-income" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-income">
-              ${financialStats.totalIncome.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              +12.5% from last month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="financial-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle>
-            <TrendingDown className="h-4 w-4 text-expense" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-expense">
-              ${financialStats.totalExpenses.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              -3.2% from last month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="financial-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Outstanding Debts</CardTitle>
-            <CreditCard className="h-4 w-4 text-debt" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-debt">
-              ${financialStats.totalDebts.toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              2 active debts
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="financial-card">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending Approvals</CardTitle>
-            <Users className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-primary">
-              {financialStats.pendingApprovals}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Awaiting family approval
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Financial Overview - Real data available in Summary tab */}
+      <Card className="financial-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChart className="h-5 w-5" />
+            Financial Overview
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground mb-4">
+            View your complete financial summary with real-time data including expenses, debts, and family spending patterns.
+          </p>
+          <Button 
+            onClick={() => setActiveTab("summary")}
+            className="w-full"
+          >
+            <PieChart className="h-4 w-4 mr-2" />
+            View Detailed Financial Summary
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Family & Invites */}
       <Card className="financial-card">
@@ -334,43 +279,32 @@ const Index = () => {
         </CardContent>
       </Card>
 
-      {/* Recent Transactions */}
+      {/* Quick Actions */}
       <Card className="financial-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
-            Recent Transactions
+            Quick Actions
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentTransactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between p-4 rounded-lg bg-accent/50">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${
-                    transaction.type === 'income' ? 'bg-income/10' : 'bg-expense/10'
-                  }`}>
-                    <DollarSign className={`h-4 w-4 ${
-                      transaction.type === 'income' ? 'text-income' : 'text-expense'
-                    }`} />
-                  </div>
-                  <div>
-                    <p className="font-medium">{transaction.description}</p>
-                    <p className="text-sm text-muted-foreground">{transaction.date}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`font-semibold ${
-                    transaction.type === 'income' ? 'text-income' : 'text-expense'
-                  }`}>
-                    {transaction.type === 'income' ? '+' : '-'}${Math.abs(transaction.amount).toFixed(2)}
-                  </span>
-                  <Badge variant={transaction.status === 'approved' ? 'default' : 'secondary'}>
-                    {transaction.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button 
+              onClick={() => setActiveTab("expenses")}
+              className="h-20 flex flex-col items-center justify-center gap-2"
+              variant="outline"
+            >
+              <Plus className="h-6 w-6" />
+              <span>Add New Expense</span>
+            </Button>
+            <Button 
+              onClick={() => setActiveTab("debts")}
+              className="h-20 flex flex-col items-center justify-center gap-2"
+              variant="outline"
+            >
+              <CreditCard className="h-6 w-6" />
+              <span>Manage Debts</span>
+            </Button>
           </div>
         </CardContent>
       </Card>
