@@ -26,6 +26,20 @@ const ExpenseForm = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
+
+    // Set up real-time listener for expenses
+    const channel = supabase
+      .channel('expenses-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (payload) => {
+        console.log('Expense change detected:', payload);
+        // Trigger a custom event that other components can listen to
+        window.dispatchEvent(new CustomEvent('expenseChanged', { detail: payload }));
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

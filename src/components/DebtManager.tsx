@@ -42,10 +42,13 @@ const DebtManager = () => {
 
     const channel = supabase
       .channel('debts-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, (payload) => {
+        console.log('Debt real-time change:', payload);
         loadDebts();
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Debts real-time subscription status:', status);
+      });
 
     return () => {
       supabase.removeChannel(channel);

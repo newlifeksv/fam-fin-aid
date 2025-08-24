@@ -8,33 +8,146 @@ import {
   TrendingDown, 
   DollarSign,
   Calendar,
-  Filter
+  Filter,
+  IndianRupee
 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from '@/integrations/supabase/client';
+import type { Session } from '@supabase/supabase-js';
+
+interface Expense {
+  id: string;
+  amount: number;
+  category: string;
+  description: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+interface Debt {
+  id: string;
+  amount: number;
+  creditor: string;
+  purpose: string;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
 
 const FinancialSummary = () => {
-  // Mock data for charts and summaries
-  const monthlyData = [
-    { month: "Jan", income: 5200, expenses: 3800, debt: 200 },
-    { month: "Feb", income: 4800, expenses: 4200, debt: 150 },
-    { month: "Mar", income: 5500, expenses: 3600, debt: 300 },
-    { month: "Apr", income: 5100, expenses: 3900, debt: 250 },
-    { month: "May", income: 5800, expenses: 4100, debt: 100 },
-    { month: "Jun", income: 6200, expenses: 3500, debt: 200 }
-  ];
+  const [session, setSession] = useState<Session | null>(null);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const categoryBreakdown = [
-    { category: "Groceries", amount: 850, percentage: 25, color: "bg-primary" },
-    { category: "Utilities", amount: 420, percentage: 12, color: "bg-secondary" },
-    { category: "Transportation", amount: 680, percentage: 20, color: "bg-debt" },
-    { category: "Entertainment", amount: 340, percentage: 10, color: "bg-expense" },
-    { category: "Healthcare", amount: 510, percentage: 15, color: "bg-income" },
-    { category: "Other", amount: 600, percentage: 18, color: "bg-accent" }
-  ];
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        loadFinancialData();
+      }
+    });
 
-  const totalIncome = monthlyData.reduce((sum, month) => sum + month.income, 0);
-  const totalExpenses = monthlyData.reduce((sum, month) => sum + month.expenses, 0);
-  const totalDebt = monthlyData.reduce((sum, month) => sum + month.debt, 0);
-  const netSavings = totalIncome - totalExpenses - totalDebt;
+    // Set up real-time listeners for expenses and debts
+    const expensesChannel = supabase
+      .channel('financial-expenses-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+        console.log('Expense change detected, reloading financial data');
+        loadFinancialData();
+      })
+      .subscribe();
+
+    const debtsChannel = supabase
+      .channel('financial-debts-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'debts' }, () => {
+        console.log('Debt change detected, reloading financial data');
+        loadFinancialData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(expensesChannel);
+      supabase.removeChannel(debtsChannel);
+    };
+  }, []);
+
+  const loadFinancialData = async () => {
+    if (!session?.user) return;
+
+    try {
+      const { data: familyMembers } = await supabase
+        .from('family_members')
+        .select('family_id')
+        .eq('user_id', session.user.id)
+        .limit(1);
+
+      if (!familyMembers?.length) return;
+
+      const familyId = familyMembers[0].family_id;
+
+      // Load expenses
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('created_at', { ascending: false });
+
+      if (expensesError) throw expensesError;
+
+      // Load debts
+      const { data: debtsData, error: debtsError } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('created_at', { ascending: false });
+
+      if (debtsError) throw debtsError;
+
+      setExpenses((expensesData || []) as Expense[]);
+      setDebts((debtsData || []) as Debt[]);
+    } catch (error) {
+      console.error('Error loading financial data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate real financial metrics
+  const approvedExpenses = expenses.filter(e => e.status === 'approved');
+  const approvedDebts = debts.filter(d => d.status === 'approved');
+  
+  const totalExpenses = approvedExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalDebt = approvedDebts.reduce((sum, debt) => sum + debt.amount, 0);
+  const pendingExpenses = expenses.filter(e => e.status === 'pending').length;
+  const pendingDebts = debts.filter(d => d.status === 'pending').length;
+
+  // Category breakdown from real data
+  const categoryBreakdown = approvedExpenses.reduce((acc, expense) => {
+    const existing = acc.find(cat => cat.category === expense.category);
+    if (existing) {
+      existing.amount += expense.amount;
+    } else {
+      acc.push({ 
+        category: expense.category, 
+        amount: expense.amount, 
+        color: "bg-primary" 
+      });
+    }
+    return acc;
+  }, [] as Array<{ category: string; amount: number; color: string }>);
+
+  // Calculate percentages
+  const categoriesWithPercentage = categoryBreakdown.map(cat => ({
+    ...cat,
+    percentage: totalExpenses > 0 ? Math.round((cat.amount / totalExpenses) * 100) : 0
+  }));
+
+  if (loading) {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6">
+        <div className="text-center py-8">Loading financial data...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -62,33 +175,16 @@ const FinancialSummary = () => {
         <Card className="financial-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-income" />
-              Total Income
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-income mb-1">
-              ${totalIncome.toFixed(2)}
-            </div>
-            <Badge variant="outline" className="text-xs">
-              +8.2% vs last period
-            </Badge>
-          </CardContent>
-        </Card>
-
-        <Card className="financial-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <TrendingDown className="h-4 w-4 text-expense" />
               Total Expenses
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-expense mb-1">
-              ${totalExpenses.toFixed(2)}
+              ₹{totalExpenses.toLocaleString()}
             </div>
             <Badge variant="outline" className="text-xs">
-              -2.1% vs last period
+              {approvedExpenses.length} approved
             </Badge>
           </CardContent>
         </Card>
@@ -97,15 +193,15 @@ const FinancialSummary = () => {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-debt" />
-              Debt Payments
+              Total Debt
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-debt mb-1">
-              ${totalDebt.toFixed(2)}
+              ₹{totalDebt.toLocaleString()}
             </div>
             <Badge variant="outline" className="text-xs">
-              -15.3% vs last period
+              {approvedDebts.length} debts
             </Badge>
           </CardContent>
         </Card>
@@ -114,15 +210,32 @@ const FinancialSummary = () => {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <PieChart className="h-4 w-4 text-primary" />
-              Net Savings
+              Pending Approvals
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className={`text-2xl font-bold mb-1 ${netSavings >= 0 ? 'text-income' : 'text-expense'}`}>
-              ${netSavings.toFixed(2)}
+            <div className="text-2xl font-bold text-primary mb-1">
+              {pendingExpenses + pendingDebts}
             </div>
-            <Badge variant={netSavings >= 0 ? "default" : "destructive"} className="text-xs">
-              {netSavings >= 0 ? 'Surplus' : 'Deficit'}
+            <Badge variant="outline" className="text-xs">
+              {pendingExpenses} expenses, {pendingDebts} debts
+            </Badge>
+          </CardContent>
+        </Card>
+
+        <Card className="financial-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              Total Items
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary mb-1">
+              {expenses.length + debts.length}
+            </div>
+            <Badge variant="outline" className="text-xs">
+              All transactions
             </Badge>
           </CardContent>
         </Card>
@@ -130,36 +243,37 @@ const FinancialSummary = () => {
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Trends */}
+        {/* Recent Transactions */}
         <Card className="financial-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-5 w-5" />
-              Monthly Trends
+              Recent Expenses
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {monthlyData.map((month, index) => (
-                <div key={month.month} className="space-y-2">
+              {approvedExpenses.slice(0, 6).map((expense) => (
+                <div key={expense.id} className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="font-medium">{month.month}</span>
+                    <span className="font-medium">{expense.category}</span>
                     <span className="text-muted-foreground">
-                      Net: ${(month.income - month.expenses - month.debt).toFixed(0)}
+                      ₹{expense.amount.toLocaleString()}
                     </span>
                   </div>
-                  <div className="relative h-2 bg-accent rounded-full overflow-hidden">
-                    <div 
-                      className="absolute left-0 top-0 h-full bg-income rounded-full"
-                      style={{ width: `${(month.income / 7000) * 100}%` }}
-                    />
+                  <div className="text-xs text-muted-foreground">
+                    {expense.description}
                   </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Income: ${month.income}</span>
-                    <span>Expenses: ${month.expenses}</span>
+                  <div className="text-xs text-muted-foreground">
+                    {new Date(expense.created_at).toLocaleDateString()}
                   </div>
                 </div>
               ))}
+              {approvedExpenses.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">
+                  No approved expenses yet
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -174,11 +288,11 @@ const FinancialSummary = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {categoryBreakdown.map((category) => (
+              {categoriesWithPercentage.map((category) => (
                 <div key={category.category} className="space-y-2">
                   <div className="flex justify-between">
                     <span className="font-medium">{category.category}</span>
-                    <span className="text-muted-foreground">${category.amount}</span>
+                    <span className="text-muted-foreground">₹{category.amount.toLocaleString()}</span>
                   </div>
                   <div className="relative h-2 bg-accent rounded-full overflow-hidden">
                     <div 
@@ -191,6 +305,11 @@ const FinancialSummary = () => {
                   </div>
                 </div>
               ))}
+              {categoriesWithPercentage.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">
+                  No expense categories yet
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -204,37 +323,37 @@ const FinancialSummary = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
-              <h3 className="font-semibold text-income">Positive Trends</h3>
+              <h3 className="font-semibold text-income">Current Status</h3>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
                   <TrendingUp className="h-4 w-4 text-income mt-0.5" />
-                  <span>Income increased by 8.2% compared to last period</span>
+                  <span>Total approved expenses: ₹{totalExpenses.toLocaleString()}</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <TrendingUp className="h-4 w-4 text-income mt-0.5" />
-                  <span>Debt payments reduced by 15.3%</span>
+                  <TrendingUp className="h-4 w-4 text-debt mt-0.5" />
+                  <span>Total approved debts: ₹{totalDebt.toLocaleString()}</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <TrendingUp className="h-4 w-4 text-income mt-0.5" />
-                  <span>Consistent savings over the last 3 months</span>
+                  <TrendingUp className="h-4 w-4 text-primary mt-0.5" />
+                  <span>Pending items: {pendingExpenses + pendingDebts} awaiting approval</span>
                 </li>
               </ul>
             </div>
             
             <div className="space-y-4">
-              <h3 className="font-semibold text-primary">Recommendations</h3>
+              <h3 className="font-semibold text-primary">Quick Stats</h3>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-start gap-2">
                   <DollarSign className="h-4 w-4 text-primary mt-0.5" />
-                  <span>Consider increasing emergency fund contributions</span>
+                  <span>Most common category: {categoriesWithPercentage[0]?.category || 'None'}</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <DollarSign className="h-4 w-4 text-primary mt-0.5" />
-                  <span>Review transportation expenses for potential savings</span>
+                  <span>Recent transactions: {expenses.length + debts.length} total</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <DollarSign className="h-4 w-4 text-primary mt-0.5" />
-                  <span>Set up automatic savings for surplus months</span>
+                  <span>Average expense: ₹{approvedExpenses.length > 0 ? Math.round(totalExpenses / approvedExpenses.length).toLocaleString() : '0'}</span>
                 </li>
               </ul>
             </div>
